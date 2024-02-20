@@ -23,74 +23,51 @@ type Car struct {
 	Data        []string `json:"adatok"`
 }
 
-func main() {
-	// Create a client
-	var err error
-	client, err = elastic.NewClient(elastic.SetURL("http://localhost:9200"))
-	//deleteIndex(INDEX_NAME)
-	//createIndex(INDEX_NAME)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//log.Println(reflect.TypeOf(client))
-	// Define the document
-	plateNumber := "DZA-567"
-	uuid5 := getUUID(plateNumber)
-	doc := Car{
-		//UUID5:       uuid5,
-		PlateNumber: plateNumber,
-		Owner:       "KZ",
-		ValidUntil:  "2024-01-01",
-		Data:        []string{"macska", "egér", "kutya"},
-	}
-
-	// Index the document
-	indexResponse, err := client.Index().
-		Index(INDEX_NAME).
-		BodyJson(doc).
-		Id(uuid5).
-		Do(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("Indexed document %s to index %s\n", indexResponse.Id, indexResponse.Index)
-	searchAll()
-	search()
+type Elastic struct {
+	elasticClient *elastic.Client
 }
 
-func search() {
-	query := elastic.NewBoolQuery().Should(
-		//elastic.NewRegexpQuery("rendszam", ".*DZ.*"),
-		//elastic.NewRegexpQuery("tulajdonos", ".*KZ.*"),
-		elastic.NewRegexpQuery("adatok", ".*acsk.*"),
-	)
-
-	searchResult, err := client.Search().
-		Index(INDEX_NAME).
-		Query(query).
-		Pretty(true).
-		Do(context.Background())
-	if err != nil {
-		log.Fatalf("Error getting response: %s", err)
-	}
-
-	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
-	fmt.Printf("Found %d documents\n", searchResult.TotalHits())
-
-	for _, hit := range searchResult.Hits.Hits {
-		var doc map[string]interface{}
-		err := json.Unmarshal(hit.Source, &doc)
+func (this *Elastic) GetInstance() *elastic.Client {
+	if this.elasticClient == nil {
+		var err error
+		this.elasticClient, err = elastic.NewClient(elastic.SetURL("http://localhost:9200"))
 		if err != nil {
-			log.Fatalf("Error deserializing hit to document: %s", err)
+			log.Fatal(err)
 		}
-		fmt.Printf("Document ID: %s, Fields: %+v\n", hit.Id, doc)
 	}
+	return this.elasticClient
 }
 
-func deleteIndex(indexName string) {
-	deleteIndex, err := client.DeleteIndex(indexName).Do(context.Background())
+func (this *Elastic) CreateIndex(indexName string) {
+	mapping := `{
+		"settings": {
+			"number_of_shards": 1,
+			"number_of_replicas": 1
+		},
+		"mappings": {
+			"properties": {
+				"rendszam": { "type": "keyword" },
+				"tulajdonos": { "type": "keyword" },
+				"forgalmi_ervenyes": { "type": "date" },
+				"adatok": { "type": "keyword" }
+			}
+		}
+	}`
+
+	// Create an index with the defined settings and mappings
+	createIndex, err := this.elasticClient.CreateIndex(indexName).BodyString(mapping).Do(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to create index: %s", err)
+	}
+	if !createIndex.Acknowledged {
+		log.Fatal("Create index not acknowledged")
+	}
+
+	log.Println("Index created successfully")
+}
+
+func (this *Elastic) DeleteIndex() {
+	deleteIndex, err := this.elasticClient.DeleteIndex(INDEX_NAME).Do(context.Background())
 	if err != nil {
 		log.Println("Error deleting the index: %s", err)
 		return
@@ -103,15 +80,9 @@ func deleteIndex(indexName string) {
 	}
 }
 
-func getUUID(name string) string {
-	namespaceDNS := uuid.NameSpaceDNS
-	uuidV5 := uuid.NewSHA1(namespaceDNS, []byte(name))
-	return uuidV5.String()
-}
-
-func searchAll() {
+func (this *Elastic) GetAllDocuments() {
 	// Initialize scrolling over documents
-	scroll := client.Scroll(INDEX_NAME).Size(100) // Adjust size as needed
+	scroll := this.elasticClient.Scroll(INDEX_NAME).Size(100) // Adjust size as needed
 	for {
 		results, err := scroll.Do(context.Background())
 		if err == io.EOF {
@@ -134,30 +105,69 @@ func searchAll() {
 	}
 }
 
-func createIndex(indexName string) {
-	mapping := `{
-		"settings": {
-			"number_of_shards": 1,
-			"number_of_replicas": 1
-		},
-		"mappings": {
-			"properties": {
-				"rendszam": { "type": "keyword" },
-				"tulajdonos": { "type": "keyword" },
-				"forgalmi_ervenyes": { "type": "date" },
-				"adatok": { "type": "keyword" }
-			}
-		}
-	}`
+func (this *Elastic) Search3(term string) {
+	query := elastic.NewBoolQuery().Should(
+		elastic.NewRegexpQuery("rendszam", term),
+		elastic.NewRegexpQuery("tulajdonos", term),
+		elastic.NewRegexpQuery("adatok", term),
+	)
 
-	// Create an index with the defined settings and mappings
-	createIndex, err := client.CreateIndex(indexName).BodyString(mapping).Do(context.Background())
+	searchResult, err := this.elasticClient.Search().
+		Index(INDEX_NAME).
+		Query(query).
+		Pretty(true).
+		Do(context.Background())
 	if err != nil {
-		log.Fatalf("Failed to create index: %s", err)
-	}
-	if !createIndex.Acknowledged {
-		log.Fatal("Create index not acknowledged")
+		log.Fatalf("Error getting response: %s", err)
 	}
 
-	fmt.Println("Index created successfully")
+	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
+	fmt.Printf("Found %d documents\n", searchResult.TotalHits())
+
+	for _, hit := range searchResult.Hits.Hits {
+		var doc map[string]interface{}
+		err := json.Unmarshal(hit.Source, &doc)
+		if err != nil {
+			log.Fatalf("Error deserializing hit to document: %s", err)
+		}
+		fmt.Printf("Document ID: %s, Fields: %+v\n", hit.Id, doc)
+	}
+}
+
+func (this *Elastic) GetUUID(name string) string {
+	namespaceDNS := uuid.NameSpaceDNS
+	uuidV5 := uuid.NewSHA1(namespaceDNS, []byte(name))
+	return uuidV5.String()
+}
+
+func (this *Elastic) AddDocument(doc Car) {
+	uuid5 := this.GetUUID(doc.PlateNumber)
+	indexResponse, err := this.elasticClient.Index().
+		Index(INDEX_NAME).
+		BodyJson(doc).
+		Id(uuid5).
+		Do(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Indexed document %s to index %s\n", indexResponse.Id, indexResponse.Index)
+}
+
+func (this *Elastic) Test1(plateNumber string) {
+	car := Car{
+		//UUID5:       uuid5,
+		PlateNumber: plateNumber,
+		Owner:       "KZ",
+		ValidUntil:  "2024-01-01",
+		Data:        []string{"data1", "data2", "data3"},
+	}
+	this.AddDocument(car)
+	this.Search3(".*ABC.*")
+}
+
+func main() {
+	eClient := Elastic{}
+	eClient.GetInstance()
+	eClient.Test1("ABC-123")
 }
