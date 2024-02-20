@@ -44,7 +44,7 @@ func (this *Elastic) Init(indexName string) *elastic.Client {
 	return this.elasticClient
 }
 
-func (this *Elastic) CreateIndex(indexName string) {
+func (this *Elastic) CreateIndex() {
 	mapping := `{
 		"settings": {
 			"number_of_shards": 2,
@@ -61,7 +61,7 @@ func (this *Elastic) CreateIndex(indexName string) {
 	}`
 
 	// Create an index with the defined settings and mappings
-	createIndex, err := this.elasticClient.CreateIndex(indexName).BodyString(mapping).Do(context.Background())
+	createIndex, err := this.elasticClient.CreateIndex(this.indexName).BodyString(mapping).Do(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to create index: %s", err)
 	}
@@ -175,6 +175,8 @@ func (this *Elastic) Test1(plateNumber string) {
 func main() {
 	eClient := Elastic{}
 	eClient.Init(ELASTIC_INDEX_NAME)
+	//eClient.DeleteIndex()
+	//eClient.CreateIndex()
 	eClient.Test1("ABC-123")
 	//eClient.CreateIndex(ELASTIC_INDEX_NAME)
 }

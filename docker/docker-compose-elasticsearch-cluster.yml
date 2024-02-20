@@ -1,7 +1,7 @@
-version: '3.7'
+version: '3.9'
 services:
   es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
     container_name: es01
     environment:
       - node.name=es01
@@ -22,7 +22,7 @@ services:
       - darth-net
 
   es02:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
     container_name: es02
     environment:
       - node.name=es02
