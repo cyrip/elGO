@@ -11,7 +11,8 @@ import (
 	elastic "github.com/olivere/elastic/v7"
 )
 
-const INDEX_NAME string = "cars"
+const ELASTIC_INDEX_NAME string = "cars"
+const ELASTIC_URL = "http://127.0.0.1:9200"
 
 var client *elastic.Client
 
@@ -24,16 +25,18 @@ type Car struct {
 }
 
 type Elastic struct {
+	indexName     string
 	elasticClient *elastic.Client
 }
 
-func (this *Elastic) GetInstance() *elastic.Client {
+func (this *Elastic) Init(indexName string) *elastic.Client {
 	if this.elasticClient == nil {
 		var err error
-		this.elasticClient, err = elastic.NewClient(elastic.SetURL("http://localhost:9200"))
+		this.elasticClient, err = elastic.NewClient(elastic.SetURL(ELASTIC_URL))
 		if err != nil {
 			log.Fatal(err)
 		}
+		this.indexName = indexName
 	}
 	return this.elasticClient
 }
@@ -67,7 +70,7 @@ func (this *Elastic) CreateIndex(indexName string) {
 }
 
 func (this *Elastic) DeleteIndex() {
-	deleteIndex, err := this.elasticClient.DeleteIndex(INDEX_NAME).Do(context.Background())
+	deleteIndex, err := this.elasticClient.DeleteIndex(this.indexName).Do(context.Background())
 	if err != nil {
 		log.Println("Error deleting the index: %s", err)
 		return
@@ -82,7 +85,7 @@ func (this *Elastic) DeleteIndex() {
 
 func (this *Elastic) GetAllDocuments() {
 	// Initialize scrolling over documents
-	scroll := this.elasticClient.Scroll(INDEX_NAME).Size(100) // Adjust size as needed
+	scroll := this.elasticClient.Scroll(this.indexName).Size(100) // Adjust size as needed
 	for {
 		results, err := scroll.Do(context.Background())
 		if err == io.EOF {
@@ -113,7 +116,7 @@ func (this *Elastic) Search3(term string) {
 	)
 
 	searchResult, err := this.elasticClient.Search().
-		Index(INDEX_NAME).
+		Index(this.indexName).
 		Query(query).
 		Pretty(true).
 		Do(context.Background())
@@ -143,7 +146,7 @@ func (this *Elastic) GetUUID(name string) string {
 func (this *Elastic) AddDocument(doc Car) {
 	uuid5 := this.GetUUID(doc.PlateNumber)
 	indexResponse, err := this.elasticClient.Index().
-		Index(INDEX_NAME).
+		Index(this.indexName).
 		BodyJson(doc).
 		Id(uuid5).
 		Do(context.Background())
@@ -168,6 +171,6 @@ func (this *Elastic) Test1(plateNumber string) {
 
 func main() {
 	eClient := Elastic{}
-	eClient.GetInstance()
+	eClient.Init(ELASTIC_INDEX_NAME)
 	eClient.Test1("ABC-123")
 }
