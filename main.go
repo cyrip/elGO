@@ -32,7 +32,10 @@ type Elastic struct {
 func (this *Elastic) Init(indexName string) *elastic.Client {
 	if this.elasticClient == nil {
 		var err error
-		this.elasticClient, err = elastic.NewClient(elastic.SetURL(ELASTIC_URL))
+		this.elasticClient, err = elastic.NewClient(
+			elastic.SetURL(ELASTIC_URL),
+			elastic.SetSniff(false),
+		)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -44,7 +47,7 @@ func (this *Elastic) Init(indexName string) *elastic.Client {
 func (this *Elastic) CreateIndex(indexName string) {
 	mapping := `{
 		"settings": {
-			"number_of_shards": 1,
+			"number_of_shards": 2,
 			"number_of_replicas": 1
 		},
 		"mappings": {
@@ -173,4 +176,5 @@ func main() {
 	eClient := Elastic{}
 	eClient.Init(ELASTIC_INDEX_NAME)
 	eClient.Test1("ABC-123")
+	//eClient.CreateIndex(ELASTIC_INDEX_NAME)
 }
