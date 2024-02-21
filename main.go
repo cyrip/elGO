@@ -242,9 +242,9 @@ func main() {
 	//eClient.DeleteIndex()
 	//eClient.CreateIndex()
 	//eClient.Test1("EZ.*")
-	//eClient.InsertFakeCars(5000)
+	eClient.InsertFakeCars(20000)
 	eClient.CountDocuments()
-	eClient.DeleteDocument("ed2a4b5a-efd1-5302-9576-5510788892c3")
-	eClient.Search3(".*DarkSeaGreen Hialeah Yeti Imperial Stout.*")
+	//eClient.DeleteDocument("ed2a4b5a-efd1-5302-9576-5510788892c3")
+	eClient.Search3(".*DarkSeaGreen.*")
 	//eClient.CreateIndex(ELASTIC_INDEX_NAME)
 }
