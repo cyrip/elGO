@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 
+	gofakeit "github.com/brianvoe/gofakeit/v7"
 	"github.com/google/uuid"
 	elastic "github.com/olivere/elastic/v7"
 )
@@ -18,10 +20,10 @@ var client *elastic.Client
 
 type Car struct {
 	//UUID5       string   `json:"string"`
-	PlateNumber string   `json:"rendszam"`
-	Owner       string   `json:"tulajdonos"`
-	ValidUntil  string   `json:"forgalmi_ervenyes"`
-	Data        []string `json:"adatok"`
+	PlateNumber string   `json:"rendszam" fake:"{regex:[A-Z]{7}}-{regex:[0-9]{1}}"`
+	Owner       string   `json:"tulajdonos" fake:"{name}"`
+	ValidUntil  string   `json:"forgalmi_ervenyes" fake:"{date}" format:"2006-01-02"`
+	Data        []string `json:"adatok" fakesize:"3"`
 }
 
 type Elastic struct {
@@ -75,7 +77,7 @@ func (this *Elastic) CreateIndex() {
 func (this *Elastic) DeleteIndex() {
 	deleteIndex, err := this.elasticClient.DeleteIndex(this.indexName).Do(context.Background())
 	if err != nil {
-		log.Println("Error deleting the index: %s", err)
+		log.Println(err)
 		return
 	}
 	if !deleteIndex.Acknowledged {
@@ -122,6 +124,7 @@ func (this *Elastic) Search3(term string) {
 		Index(this.indexName).
 		Query(query).
 		Pretty(true).
+		Size(100).
 		Do(context.Background())
 	if err != nil {
 		log.Fatalf("Error getting response: %s", err)
@@ -146,7 +149,7 @@ func (this *Elastic) GetUUID(name string) string {
 	return uuidV5.String()
 }
 
-func (this *Elastic) AddDocument(doc Car) {
+func (this *Elastic) AddDocument(doc Car) bool {
 	uuid5 := this.GetUUID(doc.PlateNumber)
 	indexResponse, err := this.elasticClient.Index().
 		Index(this.indexName).
@@ -154,10 +157,12 @@ func (this *Elastic) AddDocument(doc Car) {
 		Id(uuid5).
 		Do(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return false
 	}
 
 	log.Printf("Indexed document %s to index %s\n", indexResponse.Id, indexResponse.Index)
+	return true
 }
 
 func (this *Elastic) Test1(plateNumber string) {
@@ -172,11 +177,74 @@ func (this *Elastic) Test1(plateNumber string) {
 	this.Search3(".*ABC.*")
 }
 
+func (this *Elastic) InsertOne(car Car) {
+	this.AddDocument(car)
+}
+
+func (this *Elastic) InsertFakeCars(count int) {
+	gofakeit.Seed(rand.Intn(10000))
+	inserted := 0
+	notInserted := 0
+	for i := 0; i < count; i++ {
+		car := this.getFakeCar()
+		log.Println(car)
+		if this.AddDocument(car) {
+			inserted = inserted + 1
+		} else {
+			notInserted = notInserted + 1
+		}
+	}
+	log.Printf("Inserted/Not inserted", inserted, notInserted)
+}
+
+func (this *Elastic) getFakeCar() Car {
+	var fakeCar Car
+	err := gofakeit.Struct(&fakeCar)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fakeCar.ValidUntil = fakeCar.ValidUntil[0:10]
+	fakeCar.Data[0] = gofakeit.Color()
+	fakeCar.Data[1] = gofakeit.City()
+	fakeCar.Data[2] = gofakeit.BeerName()
+
+	return fakeCar
+}
+
+func (this *Elastic) CountDocuments() int {
+	count, err := this.elasticClient.Count().
+		Index(this.indexName).
+		Do(context.Background())
+	if err != nil {
+		log.Fatalf("Error getting document count: %s", err)
+	}
+
+	fmt.Printf("Document count in '%s': %d\n", this.indexName, count)
+	return int(count)
+}
+
+func (this *Elastic) DeleteDocument(docID string) {
+	deleteResponse, err := this.elasticClient.Delete().
+		Index(this.indexName).
+		Id(docID).
+		Do(context.Background())
+
+	if err != nil {
+		log.Printf("Error deleting document: %s", err.Error())
+	}
+	fmt.Printf("Document ID %s deleted, result: %s\n", docID, deleteResponse.Result)
+}
+
 func main() {
 	eClient := Elastic{}
 	eClient.Init(ELASTIC_INDEX_NAME)
 	//eClient.DeleteIndex()
 	//eClient.CreateIndex()
-	eClient.Test1("ABC-123")
+	//eClient.Test1("EZ.*")
+	//eClient.InsertFakeCars(5000)
+	eClient.CountDocuments()
+	eClient.DeleteDocument("ed2a4b5a-efd1-5302-9576-5510788892c3")
+	eClient.Search3(".*DarkSeaGreen Hialeah Yeti Imperial Stout.*")
 	//eClient.CreateIndex(ELASTIC_INDEX_NAME)
 }
